@@ -1,4 +1,5 @@
 main.spec
 build/
 dist/
-passwords.db
+*.db
+*.lnk

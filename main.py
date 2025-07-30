@@ -71,7 +71,7 @@ class PasswordManagerApp:
         self.root = root
         self.root.title("Password Manager")
         self.root.configure(bg="#1e1e1e")
-        self.root.geometry("500x500")
+        self.root.geometry("500x550")
         self.root.resizable(False, False)
 
         style = ttk.Style()
@@ -87,16 +87,40 @@ class PasswordManagerApp:
                         arrowcolor="white")
         
         style.map("Vertical.TScrollbar",
-          background=[("active", "#3c3c3c"), ("!active", "#3c3c3c")],
-          arrowcolor=[("active", "white"), ("!active", "white")],
-          troughcolor=[("!active", "#2d2d2d"), ("active", "#2d2d2d")])
+                  background=[("active", "#3c3c3c"), ("!active", "#3c3c3c")],
+                  arrowcolor=[("active", "white"), ("!active", "white")],
+                  troughcolor=[("!active", "#2d2d2d"), ("active", "#2d2d2d")])
         
-
         self.label = tk.Label(root, text="Social:", fg="white", bg="#1e1e1e", font=("Segoe UI", 12))
         self.label.pack(pady=5)
 
         self.entry = tk.Entry(root, width=40, bg="#2d2d2d", fg="white", insertbackground="white")
         self.entry.pack(pady=5)
+
+        # Password options
+        self.options_frame = tk.LabelFrame(root, text="Password Options", bg="#1e1e1e", fg="white")
+        self.options_frame.pack(pady=5)
+
+        self.use_uppercase = tk.BooleanVar(value=True)
+        self.use_lowercase = tk.BooleanVar(value=True)
+        self.use_digits = tk.BooleanVar(value=True)
+        self.use_specials = tk.BooleanVar(value=True)
+
+        tk.Checkbutton(self.options_frame, text="Uppercase", variable=self.use_uppercase,
+                       bg="#1e1e1e", fg="white", selectcolor="#2d2d2d").grid(row=0, column=0, padx=5, sticky="w")
+        tk.Checkbutton(self.options_frame, text="Lowercase", variable=self.use_lowercase,
+                       bg="#1e1e1e", fg="white", selectcolor="#2d2d2d").grid(row=0, column=1, padx=5, sticky="w")
+        tk.Checkbutton(self.options_frame, text="Numbers", variable=self.use_digits,
+                       bg="#1e1e1e", fg="white", selectcolor="#2d2d2d").grid(row=0, column=2, padx=5, sticky="w")
+        tk.Checkbutton(self.options_frame, text="Specials", variable=self.use_specials,
+                       bg="#1e1e1e", fg="white", selectcolor="#2d2d2d").grid(row=0, column=3, padx=5, sticky="w")
+
+        self.length_label = tk.Label(self.options_frame, text="Length:", bg="#1e1e1e", fg="white")
+        self.length_label.grid(row=1, column=0, padx=5, pady=5, sticky="w")
+
+        self.length_spinbox = tk.Spinbox(self.options_frame, from_=4, to=64, width=5,
+                                         bg="#2d2d2d", fg="white", insertbackground="white")
+        self.length_spinbox.grid(row=1, column=1, padx=5, pady=5, sticky="w")
 
         self.button_frame = tk.Frame(root, bg="#1e1e1e")
         self.button_frame.pack(pady=10)
@@ -119,7 +143,7 @@ class PasswordManagerApp:
 
         # Text widget
         self.output = tk.Text(text_frame, height=15, width=58, bg="#2d2d2d", fg="white",
-                            insertbackground="white", font=("Consolas", 10), wrap="none")
+                              insertbackground="white", font=("Consolas", 10), wrap="none")
         self.output.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
 
         # Scrollbar
@@ -129,14 +153,30 @@ class PasswordManagerApp:
         self.output.configure(yscrollcommand=scrollbar.set)
 
     def get_charset(self):
-        return string.ascii_letters + string.digits + string.punctuation
+        charset = ''
+        if self.use_uppercase.get():
+            charset += string.ascii_uppercase
+        if self.use_lowercase.get():
+            charset += string.ascii_lowercase
+        if self.use_digits.get():
+            charset += string.digits
+        if self.use_specials.get():
+            charset += string.punctuation
+        return charset
 
     def add_social(self):
         social = self.entry.get().strip()
         if not social:
             messagebox.showwarning("Warning", "Social cannot be empty.")
             return
-        password = generate_password(16, self.get_charset())
+
+        charset = self.get_charset()
+        if not charset:
+            messagebox.showwarning("Warning", "Select at least one character type.")
+            return
+
+        length = int(self.length_spinbox.get())
+        password = generate_password(length, charset)
         success, msg = save_to_db(social, password)
         if success:
             messagebox.showinfo("Success", f"Password generated and saved for {social}.")
@@ -148,7 +188,14 @@ class PasswordManagerApp:
         if not social:
             messagebox.showwarning("Warning", "Social cannot be empty.")
             return
-        password = generate_password(16, self.get_charset())
+
+        charset = self.get_charset()
+        if not charset:
+            messagebox.showwarning("Warning", "Select at least one character type.")
+            return
+
+        length = int(self.length_spinbox.get())
+        password = generate_password(length, charset)
         success, msg = update_password(social, password)
         if success:
             messagebox.showinfo("Updated", f"New password generated for {social}.")
