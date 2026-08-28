@@ -1,5 +1,7 @@
 main.spec
 build/
 dist/
+dist-electron/
+node_modules/
 *.db
 *.lnk
