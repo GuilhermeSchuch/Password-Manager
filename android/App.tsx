@@ -5,6 +5,8 @@ import * as Clipboard from "expo-clipboard";
 import * as DocumentPicker from "expo-document-picker";
 import { File } from "expo-file-system";
 import { allowScreenCaptureAsync, preventScreenCaptureAsync } from "expo-screen-capture";
+import QuickCrypto from "react-native-quick-crypto";
+import { SafeAreaProvider, SafeAreaView } from "react-native-safe-area-context";
 
 import { decryptVaultBytes, MAX_VAULT_BYTES, type PasswordEntry } from "../packages/vault-format/src";
 
@@ -12,7 +14,11 @@ const LOCK_AFTER_MS = 3 * 60 * 1000;
 const CLIPBOARD_CLEAR_MS = 30 * 1000;
 const PICKER_TIMEOUT_MS = 5 * 60 * 1000;
 const FILE_READ_TIMEOUT_MS = 30 * 1000;
-const DECRYPT_TIMEOUT_MS = 3 * 60 * 1000;
+// The vault KDF is intentionally expensive. Ten minutes keeps the operation
+// bounded while allowing slower Android devices to finish local decryption.
+const DECRYPT_TIMEOUT_MS = 10 * 60 * 1000;
+const KEY_LENGTH = 32;
+const SCRYPT_OPTIONS = { N: 131072, r: 8, p: 1, maxmem: 256 * 1024 * 1024 } as const;
 
 type Notice = { kind: "error" | "success"; text: string } | null;
 type DebugLog = { id: string; time: string; message: string };
@@ -21,13 +27,34 @@ function errorMessage(error: unknown): string {
   return error instanceof Error ? error.message : "Something went wrong.";
 }
 
-function withTimeout<T>(promise: Promise<T>, timeoutMs: number, message: string): Promise<T> {
+function withTimeout<T>(promise: Promise<T>, timeoutMs: number, message: string, onTimeout?: () => void): Promise<T> {
   return new Promise((resolve, reject) => {
-    const timer = setTimeout(() => reject(new Error(message)), timeoutMs);
+    const timer = setTimeout(() => {
+      onTimeout?.();
+      reject(new Error(message));
+    }, timeoutMs);
     promise.then(
       (value) => { clearTimeout(timer); resolve(value); },
       (error) => { clearTimeout(timer); reject(error); },
     );
+  });
+}
+
+function deriveNativeKey(passphrase: string, salt: Uint8Array, onProgress: (progress: number) => void): Promise<Uint8Array> {
+  onProgress(0);
+  return new Promise((resolve, reject) => {
+    QuickCrypto.scrypt(passphrase, salt, KEY_LENGTH, SCRYPT_OPTIONS, (error, derivedKey) => {
+      if (error) {
+        reject(error);
+        return;
+      }
+      if (!derivedKey) {
+        reject(new Error("Native key derivation returned no key."));
+        return;
+      }
+      onProgress(1);
+      resolve(new Uint8Array(derivedKey));
+    });
   });
 }
 
@@ -45,7 +72,7 @@ function DebugScreen({ logs, onBack, onClear, onCopy }: { logs: DebugLog[]; onBa
   }
 
   return (
-    <View style={styles.debugScreen}>
+    <SafeAreaView style={styles.debugScreen} edges={["top", "bottom"]}>
       <StatusBar style="light" />
       <View style={styles.debugHeader}>
         <View><Text style={styles.eyebrow}>TEMPORARY TOOL</Text><Text style={styles.debugTitle}>Diagnostics</Text></View>
@@ -64,11 +91,11 @@ function DebugScreen({ logs, onBack, onClear, onCopy }: { logs: DebugLog[]; onBa
         renderItem={({ item }) => <View style={styles.debugRow}><Text style={styles.debugTime}>{item.time}</Text><Text style={styles.debugMessage}>{item.message}</Text></View>}
         ListEmptyComponent={<Text style={styles.debugEmpty}>No diagnostics recorded yet.</Text>}
       />
-    </View>
+    </SafeAreaView>
   );
 }
 
-function App() {
+function AppContent() {
   const [entries, setEntries] = useState<PasswordEntry[]>([]);
   const [loaded, setLoaded] = useState(false);
   const [selectedId, setSelectedId] = useState<string | null>(null);
@@ -177,16 +204,23 @@ function App() {
 
       debugLog("Starting scrypt key derivation and AES-256-GCM authentication.");
       let lastProgressBucket = -1;
+      let decryptionTimedOut = false;
+      const onProgress = (progress: number) => {
+        // Native scrypt reports only when it starts and finishes. Keep the
+        // same diagnostics shape without logging late completion after a
+        // timeout; the derived key is still wiped by the shared decoder.
+        if (decryptionTimedOut) return;
+        const bucket = Math.floor(progress * 10);
+        if (bucket > lastProgressBucket) {
+          lastProgressBucket = bucket;
+          debugLog(`Key derivation progress: ${Math.min(bucket, 10) * 10}%.`);
+        }
+      };
       const decrypted = await withTimeout(
-        decryptVaultBytes(bytes, passphrase, (progress) => {
-          const bucket = Math.floor(progress * 10);
-          if (bucket > lastProgressBucket && bucket < 10) {
-            lastProgressBucket = bucket;
-            debugLog(`Key derivation progress: ${bucket * 10}%.`);
-          }
-        }),
+        decryptVaultBytes(bytes, passphrase, onProgress, (password, salt) => deriveNativeKey(password, salt, onProgress)),
         DECRYPT_TIMEOUT_MS,
         "Decryption timed out. The device may be too slow for this vault's security settings; check Diagnostics and try again.",
+        () => { decryptionTimedOut = true; },
       );
       debugLog(`Decryption succeeded in ${Date.now() - startedAt} ms; ${decrypted.length} entries validated.`);
       setEntries(decrypted);
@@ -249,32 +283,34 @@ function App() {
 
   if (!loaded) {
     return (
-      <KeyboardAvoidingView style={styles.screen} behavior={Platform.OS === "ios" ? "padding" : "height"} keyboardVerticalOffset={Platform.OS === "ios" ? 24 : 0}>
-        <StatusBar style="light" />
-        <ScrollView contentContainerStyle={styles.authContent} keyboardShouldPersistTaps="handled">
-          <AppLogo />
-          <Text style={styles.eyebrow}>READ-ONLY VAULT</Text>
-          <Text style={styles.title}>Open your backup</Text>
-          <Text style={styles.subtitle}>Select an encrypted .pmvault export from the Electron app. It is decrypted only in this app's memory.</Text>
-          <View style={styles.securityNote}>
-            <Text style={styles.securityIcon}>✓</Text>
-            <Text style={styles.securityText}>No editing, database, account, or network connection. This app can only view and copy entries.</Text>
-          </View>
-          <Text style={styles.label}>Backup passphrase</Text>
-          <TextInput value={passphrase} onChangeText={setPassphrase} placeholder="At least 12 characters" placeholderTextColor="#7083a1" secureTextEntry autoCapitalize="none" autoCorrect={false} style={styles.input} onFocus={resetLockTimer} />
-          <Pressable style={({ pressed }) => [styles.primaryButton, pressed && styles.pressed, busy && styles.disabled]} onPress={importVault} disabled={busy}>
-            <Text style={styles.primaryButtonText}>{busy ? "Decrypting locally…" : "Choose .pmvault file"}</Text>
-          </Pressable>
-          <Pressable style={({ pressed }) => [styles.diagnosticButton, pressed && styles.pressed]} onPress={() => setShowDebug(true)}><Text style={styles.diagnosticButtonText}>Open diagnostics</Text></Pressable>
-          {notice && <Notice notice={notice} />}
-          <Text style={styles.footerText}>AES-256-GCM · scrypt · offline by design</Text>
-        </ScrollView>
-      </KeyboardAvoidingView>
+      <SafeAreaView style={styles.screen} edges={["top", "bottom"]}>
+        <KeyboardAvoidingView style={styles.screen} behavior={Platform.OS === "ios" ? "padding" : "height"} keyboardVerticalOffset={Platform.OS === "ios" ? 24 : 0}>
+          <StatusBar style="light" />
+          <ScrollView contentContainerStyle={styles.authContent} keyboardShouldPersistTaps="handled">
+            <AppLogo />
+            <Text style={styles.eyebrow}>READ-ONLY VAULT</Text>
+            <Text style={styles.title}>Open your backup</Text>
+            <Text style={styles.subtitle}>Select an encrypted .pmvault export from the Electron app. It is decrypted only in this app's memory.</Text>
+            <View style={styles.securityNote}>
+              <Text style={styles.securityIcon}>✓</Text>
+              <Text style={styles.securityText}>No editing, database, account, or network connection. This app can only view and copy entries.</Text>
+            </View>
+            <Text style={styles.label}>Backup passphrase</Text>
+            <TextInput value={passphrase} onChangeText={setPassphrase} placeholder="At least 12 characters" placeholderTextColor="#7083a1" secureTextEntry autoCapitalize="none" autoCorrect={false} style={styles.input} onFocus={resetLockTimer} />
+            <Pressable style={({ pressed }) => [styles.primaryButton, pressed && styles.pressed, busy && styles.disabled]} onPress={importVault} disabled={busy}>
+              <Text style={styles.primaryButtonText}>{busy ? "Decrypting locally…" : "Choose .pmvault file"}</Text>
+            </Pressable>
+            <Pressable style={({ pressed }) => [styles.diagnosticButton, pressed && styles.pressed]} onPress={() => setShowDebug(true)}><Text style={styles.diagnosticButtonText}>Open diagnostics</Text></Pressable>
+            {notice && <Notice notice={notice} />}
+            <Text style={styles.footerText}>AES-256-GCM · scrypt · offline by design</Text>
+          </ScrollView>
+        </KeyboardAvoidingView>
+      </SafeAreaView>
     );
   }
 
   return (
-    <View style={styles.screen} onTouchStart={resetLockTimer}>
+    <SafeAreaView style={styles.screen} edges={["top", "bottom"]} onTouchStart={resetLockTimer}>
       <StatusBar style="light" />
       <View style={styles.header}>
         <View style={styles.headerBrand}><AppLogo /><View><Text style={styles.headerTitle}>Vault Reader</Text><Text style={styles.headerSub}>{fileName}</Text></View></View>
@@ -300,8 +336,12 @@ function App() {
         {selected && <DetailPanel entry={selected} showPassword={showPassword} onTogglePassword={() => setShowPassword((value) => !value)} onCopy={copyValue} />}
       </View>
       {notice && <Notice notice={notice} />}
-    </View>
+    </SafeAreaView>
   );
+}
+
+function App() {
+  return <SafeAreaProvider><AppContent /></SafeAreaProvider>;
 }
 
 function DetailPanel({ entry, showPassword, onTogglePassword, onCopy }: { entry: PasswordEntry; showPassword: boolean; onTogglePassword: () => void; onCopy: (label: string, value: string) => void }) {

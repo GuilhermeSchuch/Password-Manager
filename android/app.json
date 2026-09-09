@@ -28,6 +28,9 @@
       "eas": {
         "projectId": "3bddb501-b67c-4f2e-b106-acf3f44b6a12"
       }
-    }
+    },
+    "plugins": [
+      "react-native-quick-crypto"
+    ]
   }
 }

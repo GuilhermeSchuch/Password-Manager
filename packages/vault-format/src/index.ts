@@ -27,6 +27,8 @@ export type PasswordEntry = {
 
 type VaultData = { version: 1; entries: PasswordEntry[] };
 
+export type VaultKeyDeriver = (passphrase: string, salt: Uint8Array) => Promise<Uint8Array>;
+
 export type VaultEnvelope = {
   format: typeof VAULT_FORMAT;
   version: typeof VAULT_VERSION;
@@ -94,7 +96,12 @@ function validateVaultData(value: unknown): VaultData {
   return { version: VAULT_VERSION, entries };
 }
 
-export async function decryptVaultBytes(bytes: Uint8Array, passphrase: string, onProgress?: (progress: number) => void): Promise<PasswordEntry[]> {
+export async function decryptVaultBytes(
+  bytes: Uint8Array,
+  passphrase: string,
+  onProgress?: (progress: number) => void,
+  deriveKey?: VaultKeyDeriver,
+): Promise<PasswordEntry[]> {
   if (bytes.byteLength > MAX_VAULT_BYTES) throw new Error("Vault file is too large.");
   if (passphrase.length < 12 || passphrase.length > 1024) throw new Error("Use the backup passphrase with at least 12 characters.");
   let envelope: VaultEnvelope;
@@ -110,12 +117,19 @@ export async function decryptVaultBytes(bytes: Uint8Array, passphrase: string, o
   const ciphertext = base64ToBytes(envelope.ciphertext);
   if (salt.length !== 16 || iv.length !== 12 || tag.length !== 16 || ciphertext.length === 0) throw new Error("Invalid vault data.");
   try {
-    const key = await scryptAsync(passphrase, salt, { N: KDF.N, r: KDF.r, p: KDF.p, dkLen: KEY_LENGTH, maxmem: KDF.maxmem, asyncTick: 10, onProgress });
-    const authenticatedCiphertext = new Uint8Array(ciphertext.length + tag.length);
-    authenticatedCiphertext.set(ciphertext);
-    authenticatedCiphertext.set(tag, ciphertext.length);
-    const plaintext = gcm(key, iv, AAD).decrypt(authenticatedCiphertext);
-    return validateVaultData(JSON.parse(bytesToUtf8(plaintext))).entries;
+    const key = await (deriveKey ?? ((password, keySalt) => scryptAsync(password, keySalt, {
+      N: KDF.N, r: KDF.r, p: KDF.p, dkLen: KEY_LENGTH, maxmem: KDF.maxmem, asyncTick: 10, onProgress,
+    })))(passphrase, salt);
+    if (key.byteLength !== KEY_LENGTH) throw new Error("Invalid derived key.");
+    try {
+      const authenticatedCiphertext = new Uint8Array(ciphertext.length + tag.length);
+      authenticatedCiphertext.set(ciphertext);
+      authenticatedCiphertext.set(tag, ciphertext.length);
+      const plaintext = gcm(key, iv, AAD).decrypt(authenticatedCiphertext);
+      return validateVaultData(JSON.parse(bytesToUtf8(plaintext))).entries;
+    } finally {
+      key.fill(0);
+    }
   } catch {
     throw new Error("Unable to unlock: incorrect passphrase or corrupted vault.");
   }

@@ -30,4 +30,4 @@ npx eas-cli build --platform android --profile preview
 
 The `preview` profile produces an internal-distribution APK. The `production` profile produces an Android App Bundle for Google Play.
 
-The shared decoder lives in `../packages/vault-format/src/index.ts` and matches the Electron export format: scrypt (`N=131072`, `r=8`, `p=1`) plus AES-256-GCM.
+The shared decoder lives in `../packages/vault-format/src/index.ts` and matches the Electron export format: scrypt (`N=131072`, `r=8`, `p=1`) plus AES-256-GCM. Android derives the key with the native `react-native-quick-crypto` module, then uses the shared decoder for authenticated AES-GCM decryption. Existing Electron `.pmvault` exports remain compatible.

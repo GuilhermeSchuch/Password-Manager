@@ -201,7 +201,7 @@ The Android app uses explicit timeouts:
 
 - document picker: five minutes
 - file read: 30 seconds
-- scrypt/AES decryption: three minutes
+- scrypt/AES decryption: ten minutes
 
 This prevents a storage-provider or cryptographic performance problem from presenting as an endless `Decrypting locally…` state.
 
@@ -306,4 +306,4 @@ When changing encryption, verify both directions if possible and consider adding
 
 No desktop or mobile application can honestly guarantee 100% security. Once a vault is unlocked, plaintext exists briefly in process memory and copied values are handled by the operating-system clipboard. Screenshot prevention and auto-lock are defense-in-depth, not absolute protection. Keep dependencies updated and protect the device account and backup passphrase.
 
-The Android app currently uses pure JavaScript cryptography for cross-platform compatibility. On very slow devices, scrypt may take noticeable time; diagnostics and the bounded timeout are intentional. Do not reduce the KDF cost casually just to make the UI faster.
+The Android app uses `react-native-quick-crypto` for native scrypt key derivation and the shared noble AES-GCM decoder for cross-platform compatibility. The native path keeps the Electron format and scrypt parameters unchanged; the decoder still has a pure JavaScript fallback for non-native callers. Do not reduce the KDF cost casually just to make the UI faster.
