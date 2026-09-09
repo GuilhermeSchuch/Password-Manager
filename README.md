@@ -62,3 +62,7 @@ JSON can be an array of objects or an object with an entries array. Supported fi
 CSV must include service (or social/name) and password columns. username, email, url, website, and notes are also accepted.
 
 The old Python/Tkinter source is retained as PasswordManager.py for reference. The existing passwords.db can be selected directly from Import passwords; it is read-only and the imported entries are re-encrypted into the new vault.
+
+## Android read-only viewer
+
+A separate Expo/React Native app is available in [android](android). It reads the same encrypted `.pmvault` exports, decrypts them locally, and only permits searching, revealing, and copying data. It never edits or saves password entries. See [android/README.md](android/README.md) for development and EAS build commands.

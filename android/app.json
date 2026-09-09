@@ -1,0 +1,33 @@
+{
+  "expo": {
+    "name": "Vault Reader",
+    "slug": "vault-reader",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "icon": "./assets/icon.png",
+    "userInterfaceStyle": "dark",
+    "splash": {
+      "image": "./assets/splash-icon.png",
+      "resizeMode": "contain",
+      "backgroundColor": "#071426"
+    },
+    "android": {
+      "adaptiveIcon": {
+        "backgroundColor": "#071426",
+        "foregroundImage": "./assets/android-icon-foreground.png",
+        "backgroundImage": "./assets/android-icon-background.png",
+        "monochromeImage": "./assets/android-icon-monochrome.png"
+      },
+      "predictiveBackGestureEnabled": false,
+      "package": "com.passwordmanager.vaultreader"
+    },
+    "web": {
+      "favicon": "./assets/favicon.png"
+    },
+    "extra": {
+      "eas": {
+        "projectId": "3bddb501-b67c-4f2e-b106-acf3f44b6a12"
+      }
+    }
+  }
+}

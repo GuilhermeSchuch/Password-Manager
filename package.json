@@ -8,11 +8,14 @@
     "dev": "concurrently -k \"vite --host 127.0.0.1\" \"tsc -p tsconfig.node.json --watch\" \"wait-on http://127.0.0.1:5173 dist-electron/main/main.js && cross-env VITE_DEV_SERVER_URL=http://127.0.0.1:5173 electron .\"",
     "typecheck": "tsc -p tsconfig.node.json --noEmit && tsc -p tsconfig.renderer.json --noEmit",
     "build": "tsc -p tsconfig.node.json && vite build",
+    "build:android": "cd android && npx eas-cli build --platform android --profile preview",
     "dist": "npm run build && electron-builder",
     "start": "electron .",
     "lint": "tsc -p tsconfig.node.json --noEmit && tsc -p tsconfig.renderer.json --noEmit"
   },
   "dependencies": {
+    "@noble/ciphers": "^2.4.0",
+    "@noble/hashes": "^2.4.0",
     "react": "19.2.8",
     "react-dom": "19.2.8",
     "sql.js": "^1.14.2"
