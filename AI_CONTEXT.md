@@ -307,3 +307,23 @@ When changing encryption, verify both directions if possible and consider adding
 No desktop or mobile application can honestly guarantee 100% security. Once a vault is unlocked, plaintext exists briefly in process memory and copied values are handled by the operating-system clipboard. Screenshot prevention and auto-lock are defense-in-depth, not absolute protection. Keep dependencies updated and protect the device account and backup passphrase.
 
 The Android app uses `react-native-quick-crypto` for native scrypt key derivation and the shared noble AES-GCM decoder for cross-platform compatibility. The native path keeps the Electron format and scrypt parameters unchanged; the decoder still has a pure JavaScript fallback for non-native callers. Do not reduce the KDF cost casually just to make the UI faster.
+
+## Password generator
+
+The desktop entry form includes a configurable secure password generator. Its pure logic is in `src/renderer/password-generator.ts` and is imported by `src/renderer/App.tsx`.
+
+Supported options:
+
+- length from 8 through 64 characters
+- uppercase letters
+- lowercase letters
+- numbers
+- symbols
+
+At least one character group is required. The generator uses `globalThis.crypto.getRandomValues`, guarantees that every enabled group appears at least once, and uses rejection sampling for unbiased random indexes. Options are UI state only and are not written to the vault. The password is placed in the draft and is not persisted until the user explicitly saves the entry.
+
+Tests are in `src/renderer/password-generator.test.ts` and run with:
+
+```powershell
+npm run test:unit
+```

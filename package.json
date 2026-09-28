@@ -11,7 +11,8 @@
     "build:android": "cd android && npx eas-cli build --platform android --profile preview",
     "dist": "npm run build && electron-builder",
     "start": "electron .",
-    "lint": "tsc -p tsconfig.node.json --noEmit && tsc -p tsconfig.renderer.json --noEmit"
+    "lint": "tsc -p tsconfig.node.json --noEmit && tsc -p tsconfig.renderer.json --noEmit",
+    "test:unit": "tsx --test src/renderer/password-generator.test.ts"
   },
   "dependencies": {
     "@noble/ciphers": "^2.4.0",
@@ -28,6 +29,7 @@
     "cross-env": "^10.1.0",
     "electron": "43.4.0",
     "electron-builder": "26.15.3",
+    "tsx": "^4.23.15",
     "typescript": "^5.9.3",
     "vite": "8.2.2",
     "wait-on": "^9.0.1"

@@ -18,7 +18,7 @@ No application can honestly guarantee 100% security. Keep Electron updated, use 
 - Create and unlock an encrypted local vault
 - Search services and usernames
 - Add, edit, delete, reveal, and copy passwords
-- Generate cryptographically random passwords
+- Generate cryptographically random passwords with configurable length, uppercase, lowercase, numbers, and symbols
 - Export encrypted .pmvault backups with a separate backup passphrase
 - Import encrypted .pmvault backups, the legacy passwords.db SQLite file, or migration-friendly JSON/CSV files
 - Duplicate imports are skipped by service and username
@@ -66,3 +66,4 @@ The old Python/Tkinter source is retained as PasswordManager.py for reference. T
 ## Android read-only viewer
 
 A separate Expo/React Native app is available in [android](android). It reads the same encrypted `.pmvault` exports, decrypts them locally, and only permits searching, revealing, and copying data. It never edits or saves password entries. See [android/README.md](android/README.md) for development and EAS build commands.
+

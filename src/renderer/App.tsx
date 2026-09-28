@@ -1,5 +1,7 @@
 import { FormEvent, useEffect, useMemo, useState } from "react";
 
+import { generatePassword, PASSWORD_LENGTH_MAX, PASSWORD_LENGTH_MIN, type PasswordGeneratorOptions } from "./password-generator";
+
 import type {
   EntryDraft,
   PasswordEntry,
@@ -16,36 +18,24 @@ const emptyDraft: EntryDraft = {
 };
 
 type PromptKind = "export" | "import" | null;
+const defaultGeneratorOptions: PasswordGeneratorOptions = {
+  length: 20,
+  uppercase: true,
+  lowercase: true,
+  numbers: true,
+  symbols: true,
+};
+
+type GeneratorToggle = Exclude<keyof PasswordGeneratorOptions, "length">;
+const generatorGroups: Array<{ key: GeneratorToggle; label: string }> = [
+  { key: "uppercase", label: "Uppercase" },
+  { key: "lowercase", label: "Lowercase" },
+  { key: "numbers", label: "Numbers" },
+  { key: "symbols", label: "Symbols" },
+];
 
 function errorMessage(error: unknown): string {
   return error instanceof Error ? error.message : "Something went wrong.";
-}
-
-function randomIndex(maximum: number): number {
-  const limit = 0x100000000 - (0x100000000 % maximum);
-  const values = new Uint32Array(1);
-  do {
-    crypto.getRandomValues(values);
-  } while (values[0] >= limit);
-  return values[0] % maximum;
-}
-
-function generatePassword(length: number, options: { uppercase: boolean; lowercase: boolean; numbers: boolean; symbols: boolean }): string {
-  const pools = [
-    options.uppercase ? "ABCDEFGHJKLMNPQRSTUVWXYZ" : "",
-    options.lowercase ? "abcdefghijkmnopqrstuvwxyz" : "",
-    options.numbers ? "23456789" : "",
-    options.symbols ? "!@#$%^&*()-_=+[]{};:,.?" : "",
-  ].filter(Boolean);
-  if (pools.length === 0) return "";
-  const required = pools.map((pool) => pool[randomIndex(pool.length)]);
-  const all = pools.join("");
-  while (required.length < length) required.push(all[randomIndex(all.length)]);
-  for (let index = required.length - 1; index > 0; index -= 1) {
-    const swap = randomIndex(index + 1);
-    [required[index], required[swap]] = [required[swap], required[index]];
-  }
-  return required.join("");
 }
 
 function AuthScreen({ hasVault, onSubmit, busy, error }: {
@@ -119,10 +109,21 @@ function EntryForm({ draft, editing, onChange, onSave, onDelete, onNew, onGenera
   onSave: (event: FormEvent) => void;
   onDelete: () => void;
   onNew: () => void;
-  onGenerate: () => void;
+  onGenerate: (options: PasswordGeneratorOptions) => void;
   showPassword: boolean;
   onTogglePassword: () => void;
 }) {
+  const [generatorOptions, setGeneratorOptions] = useState<PasswordGeneratorOptions>(defaultGeneratorOptions);
+  const enabledGroupCount = generatorGroups.filter(({ key }) => generatorOptions[key]).length;
+
+  function updateGeneratorOption(key: GeneratorToggle, enabled: boolean) {
+    setGeneratorOptions((current) => ({ ...current, [key]: enabled }));
+  }
+
+  function generate() {
+    onGenerate(generatorOptions);
+  }
+
   return (
     <form className="entry-form" onSubmit={onSave}>
       <div className="form-heading">
@@ -152,9 +153,39 @@ function EntryForm({ draft, editing, onChange, onSave, onDelete, onNew, onGenera
             autoComplete="new-password"
           />
           <button type="button" className="input-action" onClick={onTogglePassword} title={showPassword ? "Hide password" : "Show password"}>{showPassword ? "◉" : "○"}</button>
-          <button type="button" className="input-action generator-action" onClick={onGenerate} title="Generate secure password">✦</button>
+          <button type="button" className="input-action generator-action" onClick={generate} title="Generate secure password">✦</button>
         </div>
       </label>
+
+      <section className="generator-panel" aria-label="Password generator">
+        <div className="generator-heading">
+          <div>
+            <strong>Generate password</strong>
+            <small>Choose the character types and length.</small>
+          </div>
+          <button type="button" className="secondary-button generator-button" onClick={generate} disabled={enabledGroupCount === 0}>Generate</button>
+        </div>
+        <label className="length-control">
+          <span>Length <output>{generatorOptions.length}</output></span>
+          <input
+            type="range"
+            min={PASSWORD_LENGTH_MIN}
+            max={PASSWORD_LENGTH_MAX}
+            value={generatorOptions.length}
+            onChange={(event) => setGeneratorOptions((current) => ({ ...current, length: Number(event.target.value) }))}
+          />
+        </label>
+        <div className="generator-options">
+          {generatorGroups.map(({ key, label }) => (
+            <label className="generator-option" key={key}>
+              <input type="checkbox" checked={generatorOptions[key]} onChange={(event) => updateGeneratorOption(key, event.target.checked)} />
+              <span>{label}</span>
+            </label>
+          ))}
+        </div>
+        {enabledGroupCount === 0 && <p className="generator-error">Select at least one character group.</p>}
+      </section>
+
       <label>
         Website
         <input value={draft.url} onChange={(event) => onChange("url", event.target.value)} placeholder="https://" />
@@ -172,7 +203,6 @@ function EntryForm({ draft, editing, onChange, onSave, onDelete, onNew, onGenera
     </form>
   );
 }
-
 function App() {
   const [status, setStatus] = useState<VaultStatus | null>(null);
   const [entries, setEntries] = useState<PasswordEntry[]>([]);
@@ -338,9 +368,15 @@ function App() {
     setToast("Vault locked");
   }
 
-  function generateForEntry() {
-    updateDraft("password", generatePassword(20, { uppercase: true, lowercase: true, numbers: true, symbols: true }));
-    setShowPassword(true);
+  function generateForEntry(options: PasswordGeneratorOptions) {
+    try {
+      updateDraft("password", generatePassword(options));
+      setShowPassword(true);
+      setError("");
+      setToast("Secure password generated");
+    } catch (reason) {
+      setError(errorMessage(reason));
+    }
   }
 
   function openPrompt(kind: PromptKind) {
@@ -493,3 +529,5 @@ function App() {
 }
 
 export default App;
+
+
